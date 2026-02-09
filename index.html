@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>THE SINGULARITY // ARCHIVE DESTRUCTION</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;500;700&display=swap');
+
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-red: #ff0055;
+            --void-dark: #050505;
+        }
+
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #000; 
+            font-family: 'Rajdhani', sans-serif;
+            user-select: none;
+        }
+
+        #canvas-container { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            z-index: 1; 
+        }
+
+        /* UI Overlay - HUD Style */
+        #hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 40px;
+            box-sizing: border-box;
+            background: radial-gradient(circle at center, transparent 50%, #000 120%);
+        }
+
+        .hud-header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 10px;
+            color: var(--neon-blue);
+            text-shadow: 0 0 10px var(--neon-blue);
+            letter-spacing: 2px;
+            font-size: 14px;
+        }
+
+        .hud-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+
+        .hud-controls {
+            pointer-events: auto;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            align-items: center;
+        }
+
+        /* Cyberpunk Buttons */
+        .btn {
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: rgba(255, 255, 255, 0.7);
+            padding: 15px 30px;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--neon-blue);
+            color: var(--neon-blue);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+        }
+
+        .btn.active-record {
+            border-color: var(--neon-red);
+            color: var(--neon-red);
+            box-shadow: 0 0 20px rgba(255, 0, 85, 0.4);
+            animation: pulse-red 2s infinite;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            transition: 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        /* Status Text */
+        #system-status {
+            position: fixed;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.5);
+            font-size: 12px;
+            letter-spacing: 3px;
+        }
+
+        /* Vignette & Scanlines */
+        .overlay-fx {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0,0,0,0.1),
+                rgba(0,0,0,0.1) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            pointer-events: none;
+            z-index: 5;
+            opacity: 0.3;
+        }
+
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 10px rgba(255,0,85,0.2); }
+            50% { box-shadow: 0 0 30px rgba(255,0,85,0.6); }
+            100% { box-shadow: 0 0 10px rgba(255,0,85,0.2); }
+        }
+        
+        #drag-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 243, 255, 0.1);
+            z-index: 20;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 30px;
+            color: var(--neon-blue);
+            text-transform: uppercase;
+            letter-spacing: 10px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            backdrop-filter: blur(5px);
+        }
+        
+        .visible { opacity: 1 !important; }
+
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    <div class="overlay-fx"></div>
+    <div id="drag-overlay">Initiate Upload Sequence</div>
+
+    <div id="hud">
+        <div class="hud-header">
+            <span>SYS.ID: BLACKHOLE_V9</span>
+            <span id="fps-counter">60 FPS</span>
+            <span>SECURE_CONNECTION</span>
+        </div>
+
+        <div class="hud-center">
+            <h1 style="color:white; letter-spacing: 10px; margin:0;">SINGULARITY</h1>
+        </div>
+        
+        <div id="system-status">WAITING FOR INPUT STREAM...</div>
+
+        <div class="hud-controls">
+            <button class="btn" id="btn-audio">REC AUDIO</button>
+            <button class="btn" id="btn-video">REC VISUAL</button>
+            <button class="btn" id="btn-file">UPLOAD FILE</button>
+        </div>
+    </div>
+    
+    <input type="file" id="file-input" style="display:none" multiple>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- GLOBAL STATE ---
+        const state = {
+            scene: null, camera: null, renderer: null, composer: null,
+            blackHole: { mesh: null, disk: null, glow: null },
+            objects: [], // things being sucked in
+            particles: [], // debris
+            isDragging: false,
+            audioCtx: null,
+            recording: { type: null, stream: null, recorder: null, previewMesh: null, analyser: null, dataArray: null }
+        };
+
+        // --- SHADERS (The Magic) ---
+
+        // 1. Accretion Disk Shader (Swirling fire)
+        const diskVertexShader = `
+            varying vec2 vUv;
+            varying vec3 vPos;
+            void main() {
+                vUv = uv;
+                vPos = position;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const diskFragmentShader = `
+            uniform float uTime;
+            varying vec2 vUv;
+            
+            // Simplex Noise (simplified)
+            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+            float snoise(vec2 v) {
+                const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+                vec2 i  = floor(v + dot(v, C.yy) );
+                vec2 x0 = v - i + dot(i, C.xx);
+                vec2 i1; i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+                vec4 x12 = x0.xyxy + C.xxzz;
+                x12.xy -= i1;
+                i = mod289(i);
+                vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+                vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+                m = m*m ;
+                m = m*m ;
+                vec3 x = 2.0 * fract(p * C.www) - 1.0;
+                vec3 h = abs(x) - 0.5;
+                vec3 ox = floor(x + 0.5);
+                vec3 a0 = x - ox;
+                m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+                vec3 g;
+                g.x  = a0.x  * x0.x  + h.x  * x0.y;
+                g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+                return 130.0 * dot(m, g);
+            }
+
+            void main() {
+                // Polar coordinates
+                vec2 centered = vUv * 2.0 - 1.0;
+                float r = length(centered);
+                float theta = atan(centered.y, centered.x);
+                
+                if(r > 1.0 || r < 0.35) discard; // Ring shape
+
+                // Swirl animation
+                float swirl = theta + r * 10.0 + uTime * 0.5;
+                float noiseVal = snoise(vec2(r * 5.0, swirl));
+                
+                // Color ramp: Black -> Red -> Orange -> White
+                vec3 color = mix(vec3(0.0), vec3(1.0, 0.2, 0.0), smoothstep(0.3, 0.6, noiseVal + 0.5));
+                color = mix(color, vec3(1.0, 0.8, 0.5), smoothstep(0.6, 0.9, noiseVal + 0.5));
+                
+                // Fade edges
+                float alpha = smoothstep(0.35, 0.45, r) * (1.0 - smoothstep(0.9, 1.0, r));
+                
+                gl_FragColor = vec4(color * 2.0, alpha); // Boost brightness for bloom
+            }
+        `;
+
+        // 2. Spaghettification Object Shader
+        // This bends the object vertices toward the black hole center (0,0,0)
+        const spaghettiVertexShader = `
+            uniform float uDistToCenter;
+            varying vec2 vUv;
+            
+            void main() {
+                vUv = uv;
+                vec3 pos = position;
+                
+                // Calculate world position
+                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                float dist = length(worldPosition.xyz);
+                
+                // SPAGHETTIFICATION LOGIC
+                // As dist gets smaller (closer to 0), we stretch along the Z-axis of the object (assuming object looks at center)
+                // and shrink X/Y
+                
+                float stretchFactor = max(1.0, 10.0 / (dist + 0.1));
+                
+                // Simple vertex displacement isn't enough for rotation, 
+                // so we handle the heavy lifting in JS by scaling the Mesh, 
+                // but we add a "wobble" here.
+                
+                pos.x += sin(pos.y * 10.0 + dist) * 0.1 * stretchFactor;
+                
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+        `;
+
+        const spaghettiFragmentShader = `
+            uniform sampler2D uTexture;
+            uniform float uOpacity;
+            varying vec2 vUv;
+            void main() {
+                vec4 texColor = texture2D(uTexture, vUv);
+                gl_FragColor = vec4(texColor.rgb, texColor.a * uOpacity);
+            }
+        `;
+
+
+        // --- SETUP ---
+
+        function init() {
+            // 1. Scene
+            state.scene = new THREE.Scene();
+            state.scene.fog = new THREE.FogExp2(0x000000, 0.02);
+
+            // 2. Camera
+            state.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 1000);
+            state.camera.position.z = 12;
+            state.camera.position.y = 2;
+
+            // 3. Renderer
+            state.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+            state.renderer.setSize(window.innerWidth, window.innerHeight);
+            state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            state.renderer.toneMapping = THREE.ReinhardToneMapping;
+            document.getElementById('canvas-container').appendChild(state.renderer.domElement);
+
+            // 4. Post-Processing (Bloom)
+            const renderScene = new RenderPass(state.scene, state.camera);
+            const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+            bloomPass.threshold = 0.1;
+            bloomPass.strength = 1.2; // GLOW INTENSITY
+            bloomPass.radius = 0.5;
+
+            state.composer = new EffectComposer(state.renderer);
+            state.composer.addPass(renderScene);
+            state.composer.addPass(bloomPass);
+
+            createBlackHole();
+            createStarField();
+            initAudio(); // Initialize audio context (muted initially)
+            
+            // Events
+            window.addEventListener('resize', onWindowResize, false);
+            setupInteraction();
+            
+            // Loop
+            animate();
+        }
+
+        function createBlackHole() {
+            // A. The Void (Inner Sphere) - Pure Black, covers everything behind it
+            const voidGeo = new THREE.SphereGeometry(2, 64, 64);
+            const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+            state.blackHole.mesh = new THREE.Mesh(voidGeo, voidMat);
+            state.scene.add(state.blackHole.mesh);
+
+            // B. The Accretion Disk (Swirling Shader)
+            const diskGeo = new THREE.PlaneGeometry(12, 12);
+            const diskMat = new THREE.ShaderMaterial({
+                vertexShader: diskVertexShader,
+                fragmentShader: diskFragmentShader,
+                uniforms: { uTime: { value: 0 } },
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+            state.blackHole.disk = new THREE.Mesh(diskGeo, diskMat);
+            state.blackHole.disk.rotation.x = -Math.PI / 2.2; // Tilt it
+            state.scene.add(state.blackHole.disk);
+        }
+
+        function createStarField() {
+            const starsGeo = new THREE.BufferGeometry();
+            const count = 2000;
+            const pos = new Float32Array(count * 3);
+            for(let i=0; i<count*3; i++) {
+                pos[i] = (Math.random() - 0.5) * 100;
+            }
+            starsGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            const starsMat = new THREE.PointsMaterial({color: 0xffffff, size: 0.1, transparent:true, opacity:0.8});
+            const starMesh = new THREE.Points(starsGeo, starsMat);
+            state.scene.add(starMesh);
+        }
+
+        // --- AUDIO ENGINE ---
+        
+        function initAudio() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                state.audioCtx = new AudioContext();
+            } catch(e) { console.warn("Web Audio API not supported"); }
+        }
+
+        function playSound(type) {
+            if (!state.audioCtx) initAudio();
+            if (state.audioCtx.state === 'suspended') state.audioCtx.resume();
+
+            const t = state.audioCtx.currentTime;
+            const osc = state.audioCtx.createOscillator();
+            const gain = state.audioCtx.createGain();
+
+            if (type === 'drone') {
+                // Done differently, usually a loop, skipping for brevity
+            } else if (type === 'suck') {
+                // Low frequency sweep
+                osc.frequency.setValueAtTime(200, t);
+                osc.frequency.exponentialRampToValueAtTime(10, t + 2);
+                gain.gain.setValueAtTime(0.5, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 2);
+                osc.connect(gain);
+                gain.connect(state.audioCtx.destination);
+                osc.start();
+                osc.stop(t + 2);
+            } else if (type === 'destroy') {
+                // White noise burst
+                const bufferSize = state.audioCtx.sampleRate * 1.5;
+                const buffer = state.audioCtx.createBuffer(1, bufferSize, state.audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                
+                const noise = state.audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                const noiseFilter = state.audioCtx.createBiquadFilter();
+                noiseFilter.type = 'lowpass';
+                noiseFilter.frequency.setValueAtTime(1000, t);
+                noiseFilter.frequency.exponentialRampToValueAtTime(100, t + 1);
+                
+                noise.connect(noiseFilter);
+                noiseFilter.connect(gain);
+                gain.connect(state.audioCtx.destination);
+                
+                gain.gain.setValueAtTime(1, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 1.5);
+                noise.start();
+            }
+        }
+
+        // --- INTERACTION & MEDIA ---
+
+        function setupInteraction() {
+            const btnAudio = document.getElementById('btn-audio');
+            const btnVideo = document.getElementById('btn-video');
+            const btnFile = document.getElementById('btn-file');
+            const fileInput = document.getElementById('file-input');
+
+            // 1. Audio Recording
+            btnAudio.onclick = async () => {
+                if(state.recording.type === 'audio') {
+                    stopRecordingAndThrow(btnAudio);
+                } else {
+                    if(state.recording.type) return; // Busy
+                    startAudioRecording(btnAudio);
+                }
+            };
+
+            // 2. Video Recording
+            btnVideo.onclick = async () => {
+                if(state.recording.type === 'video') {
+                    stopRecordingAndThrow(btnVideo);
+                } else {
+                    if(state.recording.type) return; 
+                    startVideoRecording(btnVideo);
+                }
+            };
+
+            // 3. File Upload
+            btnFile.onclick = () => fileInput.click();
+            fileInput.onchange = (e) => {
+                const files = e.target.files;
+                if(files.length > 0) {
+                    processFiles(files);
+                    fileInput.value = ''; // reset
+                }
+            };
+
+            // Drag and drop
+            document.body.addEventListener('dragover', e => { e.preventDefault(); document.getElementById('drag-overlay').classList.add('visible'); });
+            document.body.addEventListener('dragleave', e => { document.getElementById('drag-overlay').classList.remove('visible'); });
+            document.body.addEventListener('drop', e => {
+                e.preventDefault();
+                document.getElementById('drag-overlay').classList.remove('visible');
+                processFiles(e.dataTransfer.files);
+            });
+        }
+
+        async function startAudioRecording(btn) {
+            try {
+                if (!state.audioCtx) initAudio();
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                btn.classList.add('active-record');
+                btn.innerText = "CAST INTO VOID";
+                document.getElementById('system-status').innerText = "RECORDING AUDIO SPECIMEN...";
+
+                // Create Audio Visualization in 3D
+                state.recording.type = 'audio';
+                state.recording.stream = stream;
+                
+                // Audio Analysis
+                const source = state.audioCtx.createMediaStreamSource(stream);
+                state.recording.analyser = state.audioCtx.createAnalyser();
+                state.recording.analyser.fftSize = 64;
+                source.connect(state.recording.analyser);
+                state.recording.dataArray = new Uint8Array(state.recording.analyser.frequencyBinCount);
+
+                // Create a floating 3D visualizer object
+                const geometry = new THREE.IcosahedronGeometry(1.5, 1);
+                const material = new THREE.MeshBasicMaterial({ color: 0x00ff55, wireframe: true });
+                const mesh = new THREE.Mesh(geometry, material);
+                
+                // Position it in front of camera
+                mesh.position.set(0, -1, 8);
+                state.scene.add(mesh);
+                state.recording.previewMesh = mesh;
+
+            } catch (err) {
+                alert("Microphone Access Denied");
+            }
+        }
+
+        async function startVideoRecording(btn) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                btn.classList.add('active-record');
+                btn.innerText = "CAST INTO VOID";
+                document.getElementById('system-status').innerText = "CAPTURING VISUAL FEED...";
+
+                state.recording.type = 'video';
+                state.recording.stream = stream;
+
+                // Create Video Texture
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.play();
+                
+                const texture = new THREE.VideoTexture(video);
+                const geometry = new THREE.PlaneGeometry(4, 3); // 4:3 aspect
+                const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+                const mesh = new THREE.Mesh(geometry, material);
+                
+                // Position "Diegetic Screen"
+                mesh.position.set(0, 0, 8);
+                mesh.rotation.y = Math.PI; // Mirror effect
+                
+                // Add a border
+                const borderGeo = new THREE.EdgesGeometry(geometry);
+                const borderMat = new THREE.LineBasicMaterial({ color: 0xff0055 });
+                const border = new THREE.LineSegments(borderGeo, borderMat);
+                mesh.add(border);
+
+                state.scene.add(mesh);
+                state.recording.previewMesh = mesh;
+
+            } catch (err) {
+                alert("Camera Access Denied");
+            }
+        }
+
+        function stopRecordingAndThrow(btn) {
+            btn.classList.remove('active-record');
+            btn.innerText = state.recording.type === 'audio' ? "REC AUDIO" : "REC VISUAL";
+            document.getElementById('system-status').innerText = "DATA CONSUMPTION IN PROGRESS...";
+
+            // Stop streams
+            state.recording.stream.getTracks().forEach(track => track.stop());
+
+            // Prepare the mesh for destruction
+            const mesh = state.recording.previewMesh;
+            
+            // Add to destruction queue
+            prepareForDestruction(mesh);
+
+            // Clear state
+            state.recording.type = null;
+            state.recording.stream = null;
+            state.recording.previewMesh = null;
+            state.recording.analyser = null;
+        }
+
+        function processFiles(files) {
+            Array.from(files).forEach(file => {
+                const loader = new THREE.TextureLoader();
+                const reader = new FileReader();
+
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = () => {
+                        // Create Texture
+                        const texture = new THREE.Texture(img);
+                        texture.needsUpdate = true;
+                        
+                        // Aspect Ratio
+                        const aspect = img.width / img.height;
+                        const h = 3;
+                        const w = h * aspect;
+
+                        const geo = new THREE.PlaneGeometry(w, h);
+                        const mat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+                        const mesh = new THREE.Mesh(geo, mat);
+                        
+                        // Random start pos
+                        mesh.position.set(
+                            (Math.random() - 0.5) * 15,
+                            (Math.random() - 0.5) * 10,
+                            10 // Start close to camera
+                        );
+                        
+                        state.scene.add(mesh);
+                        prepareForDestruction(mesh);
+                    };
+                };
+                reader.readAsDataURL(file);
+            });
+            playSound('suck');
+        }
+
+        function prepareForDestruction(mesh) {
+            // Assign physics properties
+            mesh.userData = {
+                velocity: new THREE.Vector3(0,0,0),
+                distance: mesh.position.distanceTo(new THREE.Vector3(0,0,0)),
+                isConsumed: false
+            };
+            state.objects.push(mesh);
+            playSound('suck');
+        }
+
+
+        // --- ANIMATION LOOP ---
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = performance.now() * 0.001;
+            
+            // 1. Update Black Hole Shader
+            if(state.blackHole.disk) {
+                state.blackHole.disk.material.uniforms.uTime.value = time;
+                state.blackHole.disk.rotation.z -= 0.01; // Spin the disk
+            }
+
+            // 2. Update Live Audio Visualizer (if recording audio)
+            if(state.recording.type === 'audio' && state.recording.previewMesh && state.recording.analyser) {
+                state.recording.analyser.getByteFrequencyData(state.recording.dataArray);
+                const avg = state.recording.dataArray.reduce((a,b)=>a+b,0) / state.recording.dataArray.length;
+                const scale = 1 + (avg / 50);
+                state.recording.previewMesh.scale.set(scale, scale, scale);
+                state.recording.previewMesh.rotation.x += 0.01;
+                state.recording.previewMesh.rotation.y += 0.02;
+            }
+
+            // 3. Physics & Spaghettification
+            for (let i = state.objects.length - 1; i >= 0; i--) {
+                const obj = state.objects[i];
+                const center = new THREE.Vector3(0, 0, 0);
+                const dist = obj.position.distanceTo(center);
+                
+                if (dist < 0.5) {
+                    // DESTROYED
+                    createExplosion(obj.position);
+                    playSound('destroy');
+                    state.scene.remove(obj);
+                    state.objects.splice(i, 1);
+                    document.getElementById('system-status').innerText = "DATA ERADICATED";
+                    continue;
+                }
+
+                // Spiral Movement (Orbital Mechanics-ish)
+                // Direction to center
+                const dir = new THREE.Vector3().subVectors(center, obj.position).normalize();
+                
+                // Cross product for tangent (orbit)
+                const tangent = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+                
+                // Blend pull and orbit. As it gets closer, pull becomes stronger than orbit.
+                const pullStrength = 0.15 + (10 / (dist * dist)); // Gravity
+                
+                obj.position.add(dir.multiplyScalar(pullStrength * 0.02)); // Move in
+                obj.position.add(tangent.multiplyScalar(0.05)); // Move sideways (spiral)
+                
+                // Spaghettification (Scale distortion)
+                // Stretch towards center
+                obj.lookAt(center);
+                obj.scale.z = 1 + (10 / dist); // Stretch long
+                obj.scale.x = 1 / (1 + (5 / dist)); // Squish thin
+                obj.scale.y = 1 / (1 + (5 / dist)); // Squish thin
+            }
+
+            // 4. Particles (Explosion debris)
+            updateParticles();
+
+            // Render with Bloom
+            state.composer.render();
+        }
+
+        function createExplosion(pos) {
+            const geo = new THREE.BufferGeometry();
+            const pCount = 50;
+            const positions = new Float32Array(pCount * 3);
+            const velocities = [];
+
+            for(let i=0; i<pCount; i++) {
+                positions[i*3] = pos.x;
+                positions[i*3+1] = pos.y;
+                positions[i*3+2] = pos.z;
+                
+                velocities.push({
+                    x: (Math.random() - 0.5) * 0.5,
+                    y: (Math.random() - 0.5) * 0.5,
+                    z: (Math.random() - 0.5) * 0.5
+                });
+            }
+            
+            geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const mat = new THREE.PointsMaterial({ color: 0xff0055, size: 0.1, transparent:true });
+            const mesh = new THREE.Points(geo, mat);
+            mesh.userData = { velocities: velocities, life: 1.0 };
+            
+            state.scene.add(mesh);
+            state.particles.push(mesh);
+        }
+
+        function updateParticles() {
+            for(let i=state.particles.length-1; i>=0; i--) {
+                const p = state.particles[i];
+                const positions = p.geometry.attributes.position.array;
+                
+                p.userData.life -= 0.02;
+                p.material.opacity = p.userData.life;
+                
+                for(let j=0; j<p.userData.velocities.length; j++) {
+                    positions[j*3] += p.userData.velocities[j].x;
+                    positions[j*3+1] += p.userData.velocities[j].y;
+                    positions[j*3+2] += p.userData.velocities[j].z;
+                }
+                p.geometry.attributes.position.needsUpdate = true;
+
+                if(p.userData.life <= 0) {
+                    state.scene.remove(p);
+                    state.particles.splice(i, 1);
+                }
+            }
+        }
+
+        function onWindowResize() {
+            state.camera.aspect = window.innerWidth / window.innerHeight;
+            state.camera.updateProjectionMatrix();
+            state.renderer.setSize(window.innerWidth, window.innerHeight);
+            state.composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Start
+        init();
+
+    </script>
+</body>
+</html>
